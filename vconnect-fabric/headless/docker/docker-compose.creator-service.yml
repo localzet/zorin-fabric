@@ -1,0 +1,50 @@
+services:
+  creator-service:
+    image: ghcr.io/localzet/vconnect-creator-service:latest
+    container_name: vconnect-creator-service
+    restart: unless-stopped
+    environment:
+      SERVICE_AUTH_MODE: ${SERVICE_AUTH_MODE:-remnawave}
+      USER_IDS: ${USER_IDS:-}
+      REMNAWAVE_URL: ${REMNAWAVE_URL:-}
+      REMNAWAVE_LOOKUP: ${REMNAWAVE_LOOKUP:-short-uuid}
+      AUTH_CACHE_TTL: ${AUTH_CACHE_TTL:-30s}
+      AUTH_STALE_GRACE: ${AUTH_STALE_GRACE:-5m}
+      REMNAWAVE_API_TOKEN_FILE: /run/secrets/remnawave_api_token
+      FABRIC_AUTH_KEY_FILE: /run/secrets/fabric_auth_key
+      WORK_PLATFORM: ${WORK_PLATFORM:-telemost}
+      WORK_COOKIE_SOURCE: ${WORK_COOKIE_SOURCE:-user}
+      RESOURCES: ${RESOURCES:-default}
+      MAX_ACTIVE_USERS: ${MAX_ACTIVE_USERS:-2}
+      WORK_TTL: ${WORK_TTL:-30m}
+      SERVICE_ROOM: ${SERVICE_ROOM:-}
+      VAULT_KEY_FILE: /run/secrets/vault_key
+      SERVICE_COOKIES: /run/secrets/yandex_cookies
+      EGRESS_CONFIG: /config/egresses.json
+    secrets:
+      - vault_key
+      - yandex_cookies
+      - remnawave_api_token
+      - fabric_auth_key
+    volumes:
+      - creator-data:/data
+      - ./egresses.json:/config/egresses.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /data/service-call.txt"]
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 3
+
+secrets:
+  vault_key:
+    file: ./secrets/vault-key.txt
+  yandex_cookies:
+    file: ./secrets/cookies-yandex.json
+  remnawave_api_token:
+    file: ./secrets/remnawave-api-token.txt
+  fabric_auth_key:
+    file: ./secrets/fabric-auth-key.txt
+
+volumes:
+  creator-data:

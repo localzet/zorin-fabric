@@ -1,0 +1,8 @@
+{
+  "trustedPhones": {
+    "AAAA:BBBB:CCCC:DDDD:EEEE:FFFF:0000:1111": "DER_PUBLIC_KEY_HEX"
+  },
+  "bindings": {
+    "AAAA:BBBB:CCCC:DDDD:EEEE:FFFF:0000:1111": "REMNAWAVE_SHORT_UUID"
+  }
+}

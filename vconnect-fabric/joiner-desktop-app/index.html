@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <title>VConnect Joiner</title>
+    <link rel="stylesheet" href="styles/app.css" />
+  </head>
+  <body>
+    <header>
+      <h1>VConnect Joiner</h1>
+      <div class="header-actions">
+        <label class="theme-control">
+          Theme
+          <select id="theme">
+            <option value="cyan">Mint / Cyan</option>
+            <option value="violet">Violet</option>
+          </select>
+        </label>
+        <div class="status" id="status" data-state="idle">idle</div>
+      </div>
+    </header>
+    <main>
+      <section class="form">
+        <label>
+          Join link
+          <input id="link" type="text" placeholder="Paste call link" />
+          <span class="hint" id="platformHint">Detected platform: -</span>
+        </label>
+        <label>
+          Display name
+          <input id="name" type="text" value="Joiner" />
+        </label>
+        <label>
+          Egress ID
+          <input id="egressId" type="text" list="egressOptions" placeholder="Creator default" />
+          <datalist id="egressOptions"></datalist>
+          <span class="hint" id="egressStatus">Available profiles will be loaded after connection</span>
+        </label>
+        <div class="row">
+          <label>
+            SOCKS5 port
+            <input id="socksPort" type="number" value="1080" min="1" max="65535" />
+          </label>
+          <label>
+            DNS
+            <input id="dns" type="text" value="1.1.1.1,8.8.8.8" />
+          </label>
+        </div>
+        <div class="row">
+          <label>
+            SOCKS5 user
+            <input id="socksUser" type="text" />
+          </label>
+          <label>
+            SOCKS5 password
+            <input id="socksPass" type="password" />
+          </label>
+        </div>
+        <div class="row">
+          <label>
+            Tunnel mode
+            <select id="tunnelMode">
+              <option value="video" selected>Video (VP8)</option>
+              <option value="dc">DataChannel</option>
+            </select>
+          </label>
+          <label>
+            Resources
+            <select id="resources">
+              <option value="moderate">Moderate</option>
+              <option value="default" selected>Default</option>
+              <option value="unlimited">Unlimited</option>
+            </select>
+          </label>
+        </div>
+        <div class="row">
+          <label>
+            VP8 FPS
+            <input id="vp8Fps" type="number" value="24" min="1" max="60" />
+          </label>
+          <label>
+            VP8 batch
+            <input id="vp8Batch" type="number" value="30" min="1" max="200" />
+          </label>
+        </div>
+        <label class="check">
+          <input id="noTun" type="checkbox" />
+          SOCKS5 only (no system-wide routing)
+        </label>
+        <label class="check">
+          <input id="dualTrack" type="checkbox" />
+          Dual-track
+        </label>
+        <label class="check">
+          <input id="serviceControl" type="checkbox" />
+          Service-call control
+        </label>
+        <div class="service-settings" id="serviceSettings">
+          <div class="service-auth-row">
+            <div>
+              <strong>Yandex session</strong>
+              <span class="hint" id="serviceAuthStatus">Checking...</span>
+            </div>
+            <div class="service-auth-actions">
+              <button type="button" class="secondary" id="serviceLogin">Sign in</button>
+              <button type="button" class="secondary danger-text" id="serviceForget">Forget</button>
+            </div>
+          </div>
+          <div class="service-client-row">
+            <div>
+              <span class="hint">Client ID</span>
+              <code id="serviceClientId">Loading...</code>
+            </div>
+            <button type="button" class="secondary" id="copyServiceClientId">Copy</button>
+          </div>
+          <label>
+            Work platform
+            <select id="serviceWorkPlatform">
+              <option value="telemost" selected>Telemost</option>
+              <option value="vk">VK</option>
+              <option value="dion">DION</option>
+              <option value="wbstream">WB Stream</option>
+            </select>
+          </label>
+        </div>
+        <div class="actions">
+          <button id="start">Start</button>
+          <button id="stop">Stop</button>
+        </div>
+      </section>
+      <section class="log-wrap">
+        <h2>Log <img class="log-download-btn" id="downloadLogs" src="resources/icons8-download-64.png" title="Download logs"></h2>
+        <pre id="log"></pre>
+      </section>
+    </main>
+    <script src="dist/renderer/index.js"></script>
+  </body>
+</html>

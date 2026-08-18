@@ -1,0 +1,89 @@
+services:
+  vconnect-edge:
+    image: ${VCONNECT_EDGE_IMAGE:-zorin-fabric/vconnect-edge:1.0.1}
+    container_name: zorin-vconnect-edge
+    restart: unless-stopped
+    # Remnawave Node/Xray обычно работает в host namespace; Fabric VLESS
+    # ingress'ы слушают только 127.0.0.1, поэтому creator должен видеть тот же loopback.
+    network_mode: host
+    environment:
+      SERVICE_AUTH_MODE: remnawave
+      REMNAWAVE_URL: ${REMNAWAVE_URL}
+      REMNAWAVE_LOOKUP: short-uuid
+      REMNAWAVE_API_TOKEN_FILE: /run/secrets/remnawave_api_token
+      FABRIC_AUTH_KEY_FILE: /run/secrets/fabric_auth_key
+      VAULT_KEY_FILE: /run/secrets/vault_key
+      SERVICE_COOKIES: /run/secrets/yandex_cookies
+      SERVICE_VK_COOKIES: /run/secrets/vk_cookies
+      FABRIC_ROUTES: /config/fabric-routes.json
+      XRAY_BIN: /usr/local/bin/xray
+      WORK_PLATFORM: ${WORK_PLATFORM:-telemost}
+      WORK_VK_PEER_ID: ${WORK_VK_PEER_ID:-}
+      WORK_COOKIE_SOURCE: ${WORK_COOKIE_SOURCE:-service}
+      MAX_ACTIVE_USERS: ${MAX_ACTIVE_USERS:-64}
+      WORK_TTL: ${WORK_TTL:-30m}
+      RESOURCES: ${RESOURCES:-default}
+    volumes:
+      - edge-data:/data
+      - ./generated/fabric-routes.json:/config/fabric-routes.json:ro
+    secrets:
+      - fabric_auth_key
+      - remnawave_api_token
+      - vault_key
+      - yandex_cookies
+      - vk_cookies
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /data/service-call.txt"]
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 3
+
+  edge-agent:
+    build:
+      context: ../../fabric-controller
+    image: zorin-fabric/controller:1.0.1
+    container_name: zorin-fabric-edge-agent
+    restart: unless-stopped
+    depends_on:
+      vconnect-edge:
+        condition: service_healthy
+    entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/fabric-edge-agent"]
+    command:
+      - --controller
+      - ${FABRIC_CONTROLLER_URL}
+      - --edge
+      - ${FABRIC_EDGE_ID}
+      - --token-file
+      - /run/secrets/edge_heartbeat_token
+      - --service-file
+      - telemost=/data/service-call.txt
+      - --capacity
+      - ${MAX_ACTIVE_USERS:-64}
+      - --active-users-file
+      - /data/active-users.txt
+      - --interval
+      - 15s
+      - --version
+      - 1.0.0
+    volumes:
+      - edge-data:/data:ro
+    secrets:
+      - edge_heartbeat_token
+
+secrets:
+  fabric_auth_key:
+    file: ./secrets/fabric-auth-key.txt
+  remnawave_api_token:
+    file: ./secrets/remnawave-api-token.txt
+  vault_key:
+    file: ./secrets/vault-key.txt
+  yandex_cookies:
+    file: ./secrets/cookies-yandex.json
+  vk_cookies:
+    file: ./secrets/cookies-vk.json
+  edge_heartbeat_token:
+    file: ./secrets/edge-heartbeat-token.txt
+
+volumes:
+  edge-data:

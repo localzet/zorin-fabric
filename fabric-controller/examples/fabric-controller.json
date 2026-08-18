@@ -1,0 +1,25 @@
+{
+  "listen": "0.0.0.0:47800",
+  "fabricAuthKeyFile": "/run/secrets/fabric_auth_key",
+  "remnawave": {
+    "baseUrl": "https://panel.example.com",
+    "apiTokenFile": "/run/secrets/remnawave_api_token",
+    "lookupMode": "short-uuid"
+  },
+  "trust": {
+    "enabled": true,
+    "registryFile": "/etc/zorin-fabric/trust-registry.json",
+    "tokenTtl": "1h"
+  },
+  "edges": [
+    {
+      "id": "ru-mow-1",
+      "name": "Moscow access 1",
+      "region": "RU-MOW",
+      "enabled": true,
+      "priority": 100,
+      "heartbeatTokenFile": "/run/secrets/edge_ru_mow_1",
+      "staleAfter": "90s"
+    }
+  ]
+}

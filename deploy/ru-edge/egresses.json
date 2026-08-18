@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "defaultEgress": "xray-auto",
+  "probeAddress": "1.1.1.1:443",
+  "egresses": [
+    {
+      "id": "xray-auto",
+      "type": "socks5",
+      "address": "127.0.0.1:10808",
+      "enabled": true
+    }
+  ]
+}

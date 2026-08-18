@@ -1,0 +1,25 @@
+import { contextBridge, ipcRenderer } from 'electron';
+import { IPC, JoinerSettings, EgressDescriptor, EgressProbeResult, ServiceAuthStatus } from '../constants';
+
+contextBridge.exposeInMainWorld('bridge', {
+  start: (settings: JoinerSettings) => ipcRenderer.invoke(IPC.START, settings),
+  stop: () => ipcRenderer.invoke(IPC.STOP),
+  serviceAuthStatus: (): Promise<ServiceAuthStatus> => ipcRenderer.invoke(IPC.SERVICE_AUTH_STATUS),
+  serviceAuthLogin: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke(IPC.SERVICE_AUTH_LOGIN),
+  serviceAuthClear: (): Promise<{ ok: boolean }> => ipcRenderer.invoke(IPC.SERVICE_AUTH_CLEAR),
+  onLog(cb: (text: string) => void) {
+    ipcRenderer.on(IPC.LOG, (_e, text) => cb(text));
+  },
+  onStatus(cb: (status: string) => void) {
+    ipcRenderer.on(IPC.STATUS, (_e, status) => cb(status));
+  },
+  onRunning(cb: (running: boolean) => void) {
+    ipcRenderer.on(IPC.RUNNING, (_e, v) => cb(v));
+  },
+  onEgressList(cb: (egresses: EgressDescriptor[]) => void) {
+    ipcRenderer.on(IPC.EGRESS_LIST, (_e, egresses) => cb(egresses));
+  },
+  onEgressProbe(cb: (result: EgressProbeResult) => void) {
+    ipcRenderer.on(IPC.EGRESS_PROBE, (_e, result) => cb(result));
+  },
+});

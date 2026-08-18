@@ -1,0 +1,1107 @@
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/android-app/app/src/main/java/app/vconnect/tunnel/ServiceControl.kt /mnt/data/zorin-fabric-v0.1/vconnect-fabric/android-app/app/src/main/java/app/vconnect/tunnel/ServiceControl.kt
+--- vconnect-main/android-app/app/src/main/java/app/vconnect/tunnel/ServiceControl.kt	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/android-app/app/src/main/java/app/vconnect/tunnel/ServiceControl.kt	2026-08-15 17:45:35.410835238 +0000
+@@ -4,6 +4,7 @@
+ 
+ data class ServiceControlConfig(
+     val userId: String,
++    val credential: String,
+     val cookieFile: String?,
+     val cookiePlatform: CallPlatform,
+     val workPlatform: CallPlatform,
+@@ -20,6 +21,7 @@
+     fun toProcessArgs(): List<String> = buildList {
+         add("--service-control")
+         addAll(listOf("--service-user-id", userId))
++        credential.takeIf { it.isNotBlank() }?.let { addAll(listOf("--service-credential", it)) }
+         addAll(listOf("--service-cookie-platform", cookiePlatform.id))
+         addAll(listOf("--service-work-platform", workPlatform.id))
+         addAll(listOf("--service-request-id", requestId))
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/android-app/app/src/main/java/app/vconnect/tunnel/ServiceJoinController.kt /mnt/data/zorin-fabric-v0.1/vconnect-fabric/android-app/app/src/main/java/app/vconnect/tunnel/ServiceJoinController.kt
+--- vconnect-main/android-app/app/src/main/java/app/vconnect/tunnel/ServiceJoinController.kt	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/android-app/app/src/main/java/app/vconnect/tunnel/ServiceJoinController.kt	2026-08-15 17:45:35.410883189 +0000
+@@ -33,6 +33,7 @@
+         onStatus = ::handleServiceStatus,
+         serviceControl = ServiceControlConfig(
+             userId = userId,
++            credential = Prefs.serviceCredential,
+             cookieFile = ServiceCookieStore.cookieFile(context, userId, workPlatform).takeIf(File::isFile)?.absolutePath,
+             cookiePlatform = workPlatform,
+             workPlatform = workPlatform,
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/android-app/app/src/main/java/app/vconnect/ui/SettingsScreenFragment.kt /mnt/data/zorin-fabric-v0.1/vconnect-fabric/android-app/app/src/main/java/app/vconnect/ui/SettingsScreenFragment.kt
+--- vconnect-main/android-app/app/src/main/java/app/vconnect/ui/SettingsScreenFragment.kt	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/android-app/app/src/main/java/app/vconnect/ui/SettingsScreenFragment.kt	2026-08-15 17:45:35.411030077 +0000
+@@ -135,6 +135,31 @@
+             clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.service_client_id), Prefs.serviceUserId))
+             Toast.makeText(requireContext(), R.string.service_client_id_copied, Toast.LENGTH_SHORT).show()
+         }
++        addRow(
++            card,
++            R.drawable.ic_setting_autofill,
++            getString(R.string.fabric_access_title),
++            if (Prefs.serviceCredential.isBlank()) getString(R.string.fabric_access_not_configured) else getString(R.string.fabric_access_configured),
++            null,
++        ) {
++            InputActionSheet.show(
++                manager = parentFragmentManager,
++                title = getString(R.string.fabric_access_title),
++                subtitle = getString(R.string.fabric_access_subtitle),
++                fieldLabel = getString(R.string.fabric_access_field),
++                initialValue = if (Prefs.serviceCredential.isBlank()) "" else "${Prefs.serviceUserId}:${Prefs.serviceCredential}",
++                hint = "shortUuid:credential",
++            ) { value ->
++                val separator = value.indexOf(':')
++                if (separator > 0 && separator < value.length - 1) {
++                    Prefs.serviceUserId = value.substring(0, separator).trim()
++                    Prefs.serviceCredential = value.substring(separator + 1).trim()
++                    rebuild()
++                } else {
++                    Toast.makeText(requireContext(), R.string.fabric_access_invalid, Toast.LENGTH_SHORT).show()
++                }
++            }
++        }
+ 
+         return section
+     }
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/android-app/app/src/main/java/app/vconnect/util/Constants.kt /mnt/data/zorin-fabric-v0.1/vconnect-fabric/android-app/app/src/main/java/app/vconnect/util/Constants.kt
+--- vconnect-main/android-app/app/src/main/java/app/vconnect/util/Constants.kt	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/android-app/app/src/main/java/app/vconnect/util/Constants.kt	2026-08-15 17:45:35.410662392 +0000
+@@ -78,6 +78,7 @@
+     const val DISCOVERED_EGRESS_LIST = "discovered_egress_list"
+     const val DISCOVERED_EGRESS_PROBES = "discovered_egress_probes"
+     const val SERVICE_USER_ID = "service_user_id"
++    const val SERVICE_CREDENTIAL = "service_credential"
+ }
+ 
+ object VP8Defaults {
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/android-app/app/src/main/java/app/vconnect/util/Prefs.kt /mnt/data/zorin-fabric-v0.1/vconnect-fabric/android-app/app/src/main/java/app/vconnect/util/Prefs.kt
+--- vconnect-main/android-app/app/src/main/java/app/vconnect/util/Prefs.kt	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/android-app/app/src/main/java/app/vconnect/util/Prefs.kt	2026-08-15 17:45:35.410773817 +0000
+@@ -149,15 +149,18 @@
+         }.getOrDefault(AccentMode.CYAN)
+         set(value) = prefs.edit { putString(PrefsKeys.ACCENT_MODE, value.name) }
+ 
+-    val serviceUserId: String
++    var serviceUserId: String
+         get() {
+-            prefs.getString(PrefsKeys.SERVICE_USER_ID, null)?.let { stored ->
+-                runCatching { UUID.fromString(stored).toString() }.getOrNull()?.let { return it }
+-            }
++            prefs.getString(PrefsKeys.SERVICE_USER_ID, null)?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+             return UUID.randomUUID().toString().also { value ->
+                 prefs.edit(commit = true) { putString(PrefsKeys.SERVICE_USER_ID, value) }
+             }
+         }
++        set(value) = prefs.edit(commit = true) { putString(PrefsKeys.SERVICE_USER_ID, value.trim()) }
++
++    var serviceCredential: String
++        get() = prefs.getString(PrefsKeys.SERVICE_CREDENTIAL, "")?.trim().orEmpty()
++        set(value) = prefs.edit(commit = true) { putString(PrefsKeys.SERVICE_CREDENTIAL, value.trim()) }
+ 
+     val activeDestination: CallConfig?
+         get() {
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/android-app/app/src/main/res/values/strings.xml /mnt/data/zorin-fabric-v0.1/vconnect-fabric/android-app/app/src/main/res/values/strings.xml
+--- vconnect-main/android-app/app/src/main/res/values/strings.xml	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/android-app/app/src/main/res/values/strings.xml	2026-08-15 17:45:35.411310232 +0000
+@@ -104,6 +104,12 @@
+     <string name="settings_row_accent">Accent color</string>
+     <string name="service_client_id">Service client ID</string>
+     <string name="service_client_id_copied">Client ID copied</string>
++    <string name="fabric_access_title">Fabric access</string>
++    <string name="fabric_access_subtitle">Paste the Remnawave short UUID and VConnect Fabric credential issued by the server.</string>
++    <string name="fabric_access_field">shortUuid:credential</string>
++    <string name="fabric_access_not_configured">Not configured</string>
++    <string name="fabric_access_configured">Remnawave identity configured</string>
++    <string name="fabric_access_invalid">Invalid Fabric access string</string>
+     <string name="sheet_save">Save call</string>
+     <string name="sheet_save_short">Save</string>
+     <string name="sheet_cancel">Cancel</string>
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/headless/docker/.env.creator-service.example /mnt/data/zorin-fabric-v0.1/vconnect-fabric/headless/docker/.env.creator-service.example
+--- vconnect-main/headless/docker/.env.creator-service.example	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/headless/docker/.env.creator-service.example	2026-08-15 17:46:19.123807022 +0000
+@@ -1,3 +1,13 @@
++# Zorin Fabric / Remnawave auth. Legacy allowlist remains supported.
++SERVICE_AUTH_MODE=remnawave
++REMNAWAVE_URL=https://panel.example.com
++REMNAWAVE_LOOKUP=short-uuid
++AUTH_CACHE_TTL=30s
++AUTH_STALE_GRACE=5m
++# Prefer *_FILE variants in Compose; values below are intentionally empty.
++REMNAWAVE_API_TOKEN=
++FABRIC_AUTH_KEY_BASE64=
++
+ CREATOR_IMAGE=ghcr.io/localzet/vconnect-creator-service:latest
+ # Copy these IDs from client service settings.
+ USER_IDS=first-client-uuid,second-client-uuid
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/headless/docker/docker-compose.creator-service.yml /mnt/data/zorin-fabric-v0.1/vconnect-fabric/headless/docker/docker-compose.creator-service.yml
+--- vconnect-main/headless/docker/docker-compose.creator-service.yml	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/headless/docker/docker-compose.creator-service.yml	2026-08-15 17:46:19.123928572 +0000
+@@ -4,7 +4,14 @@
+     container_name: vconnect-creator-service
+     restart: unless-stopped
+     environment:
+-      USER_IDS: ${USER_IDS:?Set USER_IDS in .env}
++      SERVICE_AUTH_MODE: ${SERVICE_AUTH_MODE:-remnawave}
++      USER_IDS: ${USER_IDS:-}
++      REMNAWAVE_URL: ${REMNAWAVE_URL:-}
++      REMNAWAVE_LOOKUP: ${REMNAWAVE_LOOKUP:-short-uuid}
++      AUTH_CACHE_TTL: ${AUTH_CACHE_TTL:-30s}
++      AUTH_STALE_GRACE: ${AUTH_STALE_GRACE:-5m}
++      REMNAWAVE_API_TOKEN_FILE: /run/secrets/remnawave_api_token
++      FABRIC_AUTH_KEY_FILE: /run/secrets/fabric_auth_key
+       WORK_PLATFORM: ${WORK_PLATFORM:-telemost}
+       WORK_COOKIE_SOURCE: ${WORK_COOKIE_SOURCE:-user}
+       RESOURCES: ${RESOURCES:-default}
+@@ -17,6 +24,8 @@
+     secrets:
+       - vault_key
+       - yandex_cookies
++      - remnawave_api_token
++      - fabric_auth_key
+     volumes:
+       - creator-data:/data
+       - ./egresses.json:/config/egresses.json:ro
+@@ -32,6 +41,10 @@
+     file: ./secrets/vault-key.txt
+   yandex_cookies:
+     file: ./secrets/cookies-yandex.json
++  remnawave_api_token:
++    file: ./secrets/remnawave-api-token.txt
++  fabric_auth_key:
++    file: ./secrets/fabric-auth-key.txt
+ 
+ volumes:
+   creator-data:
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/headless/docker/entrypoint.sh /mnt/data/zorin-fabric-v0.1/vconnect-fabric/headless/docker/entrypoint.sh
+--- vconnect-main/headless/docker/entrypoint.sh	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/headless/docker/entrypoint.sh	2026-08-15 17:46:19.123662558 +0000
+@@ -7,12 +7,29 @@
+ EGRESS_CONFIG="${EGRESS_CONFIG:-}"
+ 
+ if [ "${SERVICE_MODE:-}" = "creator-service" ]; then
++    SERVICE_AUTH_MODE="${SERVICE_AUTH_MODE:-allowlist}"
+     USER_IDS="${USER_IDS:-${USER_ID:-}}"
+-    [ -n "$USER_IDS" ] || { echo "USER_IDS is required" >&2; exit 1; }
++    if [ "$SERVICE_AUTH_MODE" = "allowlist" ]; then
++        [ -n "$USER_IDS" ] || { echo "USER_IDS is required in allowlist mode" >&2; exit 1; }
++    fi
+     if [ -n "${VAULT_KEY_FILE:-}" ]; then
+         VAULT_KEY_BASE64="$(cat "$VAULT_KEY_FILE")"
+     fi
+     : "${VAULT_KEY_BASE64:?VAULT_KEY_BASE64 or VAULT_KEY_FILE is required}"
++    if [ "$SERVICE_AUTH_MODE" = "remnawave" ]; then
++        if [ -n "${FABRIC_AUTH_KEY_FILE:-}" ]; then
++            FABRIC_AUTH_KEY_BASE64="$(cat "$FABRIC_AUTH_KEY_FILE")"
++        fi
++        if [ -n "${REMNAWAVE_API_TOKEN_FILE:-}" ]; then
++            REMNAWAVE_API_TOKEN="$(cat "$REMNAWAVE_API_TOKEN_FILE")"
++        fi
++        : "${FABRIC_AUTH_KEY_BASE64:?FABRIC_AUTH_KEY_BASE64 or FABRIC_AUTH_KEY_FILE is required}"
++        : "${REMNAWAVE_URL:?REMNAWAVE_URL is required}"
++        : "${REMNAWAVE_API_TOKEN:?REMNAWAVE_API_TOKEN or REMNAWAVE_API_TOKEN_FILE is required}"
++        REMNAWAVE_LOOKUP="${REMNAWAVE_LOOKUP:-short-uuid}"
++        AUTH_CACHE_TTL="${AUTH_CACHE_TTL:-30s}"
++        AUTH_STALE_GRACE="${AUTH_STALE_GRACE:-5m}"
++    fi
+     SERVICE_COOKIES="${SERVICE_COOKIES:-/data/cookies-yandex.json}"
+     VAULT_DIR="${VAULT_DIR:-/data/vault}"
+     WORK_PLATFORM="${WORK_PLATFORM:-telemost}"
+@@ -32,6 +49,7 @@
+ 
+     set -- \
+         --service-control \
++        --service-auth-mode "$SERVICE_AUTH_MODE" \
+         --service-user-ids "$USER_IDS" \
+         --cookies "$SERVICE_COOKIES" \
+         --vault-dir "$VAULT_DIR" \
+@@ -46,6 +64,15 @@
+         --write-file "$SERVICE_WRITE_FILE"
+ 
+     [ -n "$EGRESS_CONFIG" ] && set -- "$@" --egress-config "$EGRESS_CONFIG"
++    if [ "$SERVICE_AUTH_MODE" = "remnawave" ]; then
++        set -- "$@" \
++            --remnawave-url "$REMNAWAVE_URL" \
++            --remnawave-api-token "$REMNAWAVE_API_TOKEN" \
++            --remnawave-lookup "$REMNAWAVE_LOOKUP" \
++            --fabric-auth-key-base64 "$FABRIC_AUTH_KEY_BASE64" \
++            --auth-cache-ttl "$AUTH_CACHE_TTL" \
++            --auth-stale-grace "$AUTH_STALE_GRACE"
++    fi
+     [ -n "${SERVICE_ROOM:-}" ] && set -- "$@" --tm-link "$SERVICE_ROOM"
+     exec "$BINS_DIR/headless-telemost-creator" "$@"
+ fi
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/headless/telemost/main.go /mnt/data/zorin-fabric-v0.1/vconnect-fabric/headless/telemost/main.go
+--- vconnect-main/headless/telemost/main.go	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/headless/telemost/main.go	2026-08-15 17:45:50.303981775 +0000
+@@ -906,6 +906,13 @@
+ 	egressConfig := flag.String("egress-config", "", "JSON egress profile config")
+ 	serviceMode := flag.Bool("service-control", false, "run this Telemost call as a creator service control plane")
+ 	serviceUserIDs := flag.String("service-user-ids", "", "comma-separated service user allowlist")
++	serviceAuthMode := flag.String("service-auth-mode", "allowlist", "service auth mode: allowlist or remnawave")
++	remnawaveURL := flag.String("remnawave-url", "", "Remnawave panel base URL used in remnawave auth mode")
++	remnawaveAPIToken := flag.String("remnawave-api-token", "", "Remnawave API bearer token")
++	remnawaveLookup := flag.String("remnawave-lookup", controlplane.RemnawaveLookupShortUUID, "Remnawave user lookup: short-uuid, username, id")
++	fabricAuthKey := flag.String("fabric-auth-key-base64", "", "base64 master key used to verify per-user Fabric credentials")
++	authCacheTTL := flag.Duration("auth-cache-ttl", 30*time.Second, "Remnawave authorization cache TTL")
++	authStaleGrace := flag.Duration("auth-stale-grace", 5*time.Minute, "maximum stale ACTIVE cache age if Remnawave is temporarily unavailable")
+ 	vaultDir := flag.String("vault-dir", "", "directory for encrypted user cookie vault")
+ 	vaultKey := flag.String("vault-key-base64", "", "base64 encoded 32-byte cookie vault key")
+ 	binsDir := flag.String("bins-dir", "", "directory containing headless creator binaries")
+@@ -952,18 +959,25 @@
+ 	)
+ 	if *serviceMode {
+ 		bindBridge, err = configureServiceControl(serviceControlOptions{
+-			UserIDs:          *serviceUserIDs,
+-			VaultDir:         *vaultDir,
+-			VaultKey:         *vaultKey,
+-			BinsDir:          *binsDir,
+-			SessionsDir:      *sessionsDir,
+-			EgressConfig:     *egressConfig,
+-			Resources:        *resources,
+-			WorkPlatform:     *workPlatform,
+-			WorkCookieSource: *workCookieSource,
+-			ServiceCookies:   *cookiesPath,
+-			MaxActiveUsers:   *maxActiveUsers,
+-			WorkTTL:          *workTTL,
++			UserIDs:           *serviceUserIDs,
++			AuthMode:          *serviceAuthMode,
++			RemnawaveURL:      *remnawaveURL,
++			RemnawaveAPIToken: *remnawaveAPIToken,
++			RemnawaveLookup:   *remnawaveLookup,
++			FabricAuthKey:     *fabricAuthKey,
++			AuthCacheTTL:      *authCacheTTL,
++			AuthStaleGrace:    *authStaleGrace,
++			VaultDir:          *vaultDir,
++			VaultKey:          *vaultKey,
++			BinsDir:           *binsDir,
++			SessionsDir:       *sessionsDir,
++			EgressConfig:      *egressConfig,
++			Resources:         *resources,
++			WorkPlatform:      *workPlatform,
++			WorkCookieSource:  *workCookieSource,
++			ServiceCookies:    *cookiesPath,
++			MaxActiveUsers:    *maxActiveUsers,
++			WorkTTL:           *workTTL,
+ 		})
+ 		if err != nil {
+ 			log.Fatalf("[service] configure: %v", err)
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/headless/telemost/service_control.go /mnt/data/zorin-fabric-v0.1/vconnect-fabric/headless/telemost/service_control.go
+--- vconnect-main/headless/telemost/service_control.go	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/headless/telemost/service_control.go	2026-08-15 17:45:50.303981775 +0000
+@@ -13,24 +13,57 @@
+ )
+ 
+ type serviceControlOptions struct {
+-	UserIDs          string
+-	VaultDir         string
+-	VaultKey         string
+-	BinsDir          string
+-	SessionsDir      string
+-	EgressConfig     string
+-	Resources        string
+-	WorkPlatform     string
+-	WorkCookieSource string
+-	ServiceCookies   string
+-	MaxActiveUsers   int
+-	WorkTTL          time.Duration
++	UserIDs           string
++	AuthMode          string
++	RemnawaveURL      string
++	RemnawaveAPIToken string
++	RemnawaveLookup   string
++	FabricAuthKey     string
++	AuthCacheTTL      time.Duration
++	AuthStaleGrace    time.Duration
++	VaultDir          string
++	VaultKey          string
++	BinsDir           string
++	SessionsDir       string
++	EgressConfig      string
++	Resources         string
++	WorkPlatform      string
++	WorkCookieSource  string
++	ServiceCookies    string
++	MaxActiveUsers    int
++	WorkTTL           time.Duration
+ }
+ 
+ func configureServiceControl(opts serviceControlOptions) (func(*tunnel.RelayBridge) error, error) {
+ 	allowedUsers := parseServiceUserIDs(opts.UserIDs)
+-	if len(allowedUsers) == 0 {
+-		return nil, fmt.Errorf("--service-user-ids is required")
++	authMode := strings.TrimSpace(opts.AuthMode)
++	if authMode == "" {
++		authMode = "allowlist"
++	}
++	var authorizer controlplane.UserAuthorizer
++	switch authMode {
++	case "allowlist":
++		if len(allowedUsers) == 0 {
++			return nil, fmt.Errorf("--service-user-ids is required in allowlist auth mode")
++		}
++	case "remnawave":
++		key, err := controlplane.FabricCredentialKeyFromBase64(opts.FabricAuthKey)
++		if err != nil {
++			return nil, fmt.Errorf("fabric auth key: %w", err)
++		}
++		authorizer, err = controlplane.NewRemnawaveAuthorizer(controlplane.RemnawaveAuthorizerConfig{
++			BaseURL:       opts.RemnawaveURL,
++			APIToken:      opts.RemnawaveAPIToken,
++			LookupMode:    opts.RemnawaveLookup,
++			CredentialKey: key,
++			CacheTTL:      opts.AuthCacheTTL,
++			StaleGrace:    opts.AuthStaleGrace,
++		})
++		if err != nil {
++			return nil, err
++		}
++	default:
++		return nil, fmt.Errorf("unsupported service auth mode %q", authMode)
+ 	}
+ 	if opts.VaultDir == "" || opts.VaultKey == "" || opts.BinsDir == "" {
+ 		return nil, fmt.Errorf("--vault-dir, --vault-key-base64 and --bins-dir are required")
+@@ -76,10 +109,11 @@
+ 
+ 	handler := controlplane.ServiceHandler{
+ 		AllowedUserIDs: allowedUsers,
++		Authorizer:     authorizer,
+ 		CookieVault:    vault,
+ 		Sessions:       orchestrator,
+ 	}
+-	log.Printf("[service] transport=telemost allowed-users=%d max-active-users=%d work-ttl=%s work-cookie-source=%s", len(allowedUsers), opts.MaxActiveUsers, opts.WorkTTL, opts.WorkCookieSource)
++	log.Printf("[service] transport=telemost auth=%s allowed-users=%d max-active-users=%d work-ttl=%s work-cookie-source=%s", authMode, len(allowedUsers), opts.MaxActiveUsers, opts.WorkTTL, opts.WorkCookieSource)
+ 	return func(bridge *tunnel.RelayBridge) error {
+ 		return handler.BindBridge(context.Background(), bridge)
+ 	}, nil
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/joiner-desktop-app/desktop-joiner/main.go /mnt/data/zorin-fabric-v0.1/vconnect-fabric/joiner-desktop-app/desktop-joiner/main.go
+--- vconnect-main/joiner-desktop-app/desktop-joiner/main.go	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/joiner-desktop-app/desktop-joiner/main.go	2026-08-15 17:47:13.475979139 +0000
+@@ -107,6 +107,7 @@
+ 	egressID := flag.String("egress-id", "", "creator egress profile id")
+ 	serviceControl := flag.Bool("service-control", false, "use this call as a control channel and request a work call")
+ 	serviceUserID := flag.String("service-user-id", "", "user id sent in service control messages")
++	serviceCredential := flag.String("service-credential", "", "credential for authenticated service control")
+ 	serviceCookieFile := flag.String("service-cookie-file", "", "optional cookies JSON file to send through the service call")
+ 	serviceCookiePlatform := flag.String("service-cookie-platform", "telemost", "platform for service cookie submit")
+ 	serviceWorkPlatform := flag.String("service-work-platform", "telemost", "platform requested for the work call")
+@@ -304,6 +305,7 @@
+ 			bridge.MarkReady()
+ 			serviceRuntime.startRequestLoop(bridge, serviceControlConfig{
+ 				UserID:         *serviceUserID,
++				Credential:     *serviceCredential,
+ 				RequestID:      *serviceRequestID,
+ 				EgressID:       *egressID,
+ 				CookieFile:     *serviceCookieFile,
+@@ -564,6 +566,7 @@
+ 
+ type serviceControlConfig struct {
+ 	UserID         string
++	Credential     string
+ 	RequestID      string
+ 	EgressID       string
+ 	CookieFile     string
+@@ -633,32 +636,35 @@
+ 			log.Printf("[service] read cookies: %v", err)
+ 		} else {
+ 			bridge.SubmitCookies(tunnel.CookieSubmit{
+-				RequestID: cfg.RequestID + "-cookies",
+-				UserID:    cfg.UserID,
+-				Platform:  cfg.CookiePlatform,
+-				Format:    "json",
+-				Payload:   string(payload),
++				RequestID:  cfg.RequestID + "-cookies",
++				UserID:     cfg.UserID,
++				Credential: cfg.Credential,
++				Platform:   cfg.CookiePlatform,
++				Format:     "json",
++				Payload:    string(payload),
+ 			})
+ 			log.Printf("[service] submitted cookies platform=%q request=%q", cfg.CookiePlatform, cfg.RequestID+"-cookies")
+ 		}
+ 	}
+ 	bridge.RequestSession(tunnel.SessionCreateRequest{
+-		RequestID: cfg.RequestID,
+-		UserID:    cfg.UserID,
+-		EgressID:  cfg.EgressID,
+-		Platform:  cfg.WorkPlatform,
+-		Mode:      cfg.TunnelMode,
++		RequestID:  cfg.RequestID,
++		UserID:     cfg.UserID,
++		Credential: cfg.Credential,
++		EgressID:   cfg.EgressID,
++		Platform:   cfg.WorkPlatform,
++		Mode:       cfg.TunnelMode,
+ 	})
+ 	log.Printf("[service] requested work session platform=%q egress=%q request=%q", cfg.WorkPlatform, cfg.EgressID, cfg.RequestID)
+ }
+ 
+ func requestServiceSessionWithoutCookies(bridge *tunnel.RelayBridge, cfg serviceControlConfig) {
+ 	bridge.RequestSession(tunnel.SessionCreateRequest{
+-		RequestID: cfg.RequestID,
+-		UserID:    cfg.UserID,
+-		EgressID:  cfg.EgressID,
+-		Platform:  cfg.WorkPlatform,
+-		Mode:      cfg.TunnelMode,
++		RequestID:  cfg.RequestID,
++		UserID:     cfg.UserID,
++		Credential: cfg.Credential,
++		EgressID:   cfg.EgressID,
++		Platform:   cfg.WorkPlatform,
++		Mode:       cfg.TunnelMode,
+ 	})
+ 	log.Printf("[service] retried work session request platform=%q egress=%q request=%q", cfg.WorkPlatform, cfg.EgressID, cfg.RequestID)
+ }
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/relay/controlplane/remnawave_authorizer.go /mnt/data/zorin-fabric-v0.1/vconnect-fabric/relay/controlplane/remnawave_authorizer.go
+--- vconnect-main/relay/controlplane/remnawave_authorizer.go	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/relay/controlplane/remnawave_authorizer.go	2026-08-15 17:44:56.825821381 +0000
+@@ -0,0 +1,252 @@
++package controlplane
++
++import (
++	"context"
++	"crypto/hmac"
++	"crypto/sha256"
++	"crypto/subtle"
++	"encoding/base64"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"net/http"
++	"net/url"
++	"strings"
++	"sync"
++	"time"
++)
++
++const (
++	RemnawaveLookupShortUUID = "short-uuid"
++	RemnawaveLookupUsername  = "username"
++	RemnawaveLookupID        = "id"
++)
++
++type RemnawaveAuthorizerConfig struct {
++	BaseURL       string
++	APIToken      string
++	LookupMode    string
++	CredentialKey []byte
++	CacheTTL      time.Duration
++	StaleGrace    time.Duration
++	HTTPClient    *http.Client
++}
++
++type remnawaveAuthorizationCacheEntry struct {
++	allowed   bool
++	checkedAt time.Time
++}
++
++type RemnawaveAuthorizer struct {
++	baseURL       string
++	apiToken      string
++	lookupMode    string
++	credentialKey []byte
++	cacheTTL      time.Duration
++	staleGrace    time.Duration
++	httpClient    *http.Client
++
++	mu    sync.Mutex
++	cache map[string]remnawaveAuthorizationCacheEntry
++}
++
++func NewRemnawaveAuthorizer(config RemnawaveAuthorizerConfig) (*RemnawaveAuthorizer, error) {
++	baseURL := strings.TrimRight(strings.TrimSpace(config.BaseURL), "/")
++	if baseURL == "" {
++		return nil, errors.New("controlplane: remnawave base URL is required")
++	}
++	if _, err := url.ParseRequestURI(baseURL); err != nil {
++		return nil, fmt.Errorf("controlplane: invalid remnawave base URL: %w", err)
++	}
++	if strings.TrimSpace(config.APIToken) == "" {
++		return nil, errors.New("controlplane: remnawave API token is required")
++	}
++	if len(config.CredentialKey) < 32 {
++		return nil, errors.New("controlplane: fabric credential key must contain at least 32 bytes")
++	}
++
++	lookupMode := strings.TrimSpace(config.LookupMode)
++	if lookupMode == "" {
++		lookupMode = RemnawaveLookupShortUUID
++	}
++	switch lookupMode {
++	case RemnawaveLookupShortUUID, RemnawaveLookupUsername, RemnawaveLookupID:
++	default:
++		return nil, fmt.Errorf("controlplane: unsupported remnawave lookup mode %q", lookupMode)
++	}
++
++	cacheTTL := config.CacheTTL
++	if cacheTTL <= 0 {
++		cacheTTL = 30 * time.Second
++	}
++	staleGrace := config.StaleGrace
++	if staleGrace < cacheTTL {
++		staleGrace = cacheTTL
++	}
++	httpClient := config.HTTPClient
++	if httpClient == nil {
++		httpClient = &http.Client{Timeout: 8 * time.Second}
++	}
++
++	return &RemnawaveAuthorizer{
++		baseURL:       baseURL,
++		apiToken:      strings.TrimSpace(config.APIToken),
++		lookupMode:    lookupMode,
++		credentialKey: append([]byte(nil), config.CredentialKey...),
++		cacheTTL:      cacheTTL,
++		staleGrace:    staleGrace,
++		httpClient:    httpClient,
++		cache:         make(map[string]remnawaveAuthorizationCacheEntry),
++	}, nil
++}
++
++func FabricCredentialKeyFromBase64(value string) ([]byte, error) {
++	value = strings.TrimSpace(value)
++	if value == "" {
++		return nil, errors.New("empty fabric credential key")
++	}
++	key, err := base64.StdEncoding.DecodeString(value)
++	if err != nil {
++		return nil, fmt.Errorf("decode fabric credential key: %w", err)
++	}
++	if len(key) < 32 {
++		return nil, errors.New("fabric credential key must contain at least 32 bytes")
++	}
++	return key, nil
++}
++
++func DeriveFabricCredential(key []byte, userID string) string {
++	mac := hmac.New(sha256.New, key)
++	_, _ = mac.Write([]byte("vconnect-fabric/v1/user/"))
++	_, _ = mac.Write([]byte(normalizeUserID(userID)))
++	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
++}
++
++func (a *RemnawaveAuthorizer) AuthorizeUser(ctx context.Context, userID, credential string) (string, error) {
++	userID = normalizeUserID(userID)
++	credential = strings.TrimSpace(credential)
++	if userID == "" || credential == "" {
++		return "", errors.New("controlplane: user credential is required")
++	}
++	if !a.validCredential(userID, credential) {
++		return "", errors.New("controlplane: user is not authorized")
++	}
++
++	now := time.Now()
++	if entry, ok := a.cached(userID); ok && now.Sub(entry.checkedAt) <= a.cacheTTL {
++		if entry.allowed {
++			return userID, nil
++		}
++		return "", errors.New("controlplane: remnawave user is not active")
++	}
++
++	allowed, err := a.fetchActiveStatus(ctx, userID)
++	if err != nil {
++		if entry, ok := a.cached(userID); ok && entry.allowed && now.Sub(entry.checkedAt) <= a.staleGrace {
++			return userID, nil
++		}
++		return "", fmt.Errorf("controlplane: remnawave authorization unavailable: %w", err)
++	}
++	a.store(userID, allowed, now)
++	if !allowed {
++		return "", errors.New("controlplane: remnawave user is not active")
++	}
++	return userID, nil
++}
++
++func (a *RemnawaveAuthorizer) validCredential(userID, credential string) bool {
++	expected := DeriveFabricCredential(a.credentialKey, userID)
++	if len(expected) != len(credential) {
++		return false
++	}
++	return subtle.ConstantTimeCompare([]byte(expected), []byte(credential)) == 1
++}
++
++func (a *RemnawaveAuthorizer) fetchActiveStatus(ctx context.Context, userID string) (bool, error) {
++	endpoint, err := a.userEndpoint(userID)
++	if err != nil {
++		return false, err
++	}
++	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
++	if err != nil {
++		return false, err
++	}
++	req.Header.Set("Authorization", "Bearer "+a.apiToken)
++	req.Header.Set("Accept", "application/json")
++
++	resp, err := a.httpClient.Do(req)
++	if err != nil {
++		return false, err
++	}
++	defer resp.Body.Close()
++	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
++	if err != nil {
++		return false, err
++	}
++	if resp.StatusCode != http.StatusOK {
++		return false, fmt.Errorf("HTTP %d", resp.StatusCode)
++	}
++
++	var payload any
++	if err := json.Unmarshal(body, &payload); err != nil {
++		return false, fmt.Errorf("decode user response: %w", err)
++	}
++	status, ok := findStringField(payload, "status")
++	if !ok {
++		return false, errors.New("user response does not contain status")
++	}
++	return strings.EqualFold(status, "ACTIVE"), nil
++}
++
++func (a *RemnawaveAuthorizer) userEndpoint(userID string) (string, error) {
++	escaped := url.PathEscape(userID)
++	switch a.lookupMode {
++	case RemnawaveLookupShortUUID:
++		return a.baseURL + "/api/users/by-short-uuid/" + escaped, nil
++	case RemnawaveLookupUsername:
++		return a.baseURL + "/api/users/by-username/" + escaped, nil
++	case RemnawaveLookupID:
++		return a.baseURL + "/api/users/" + escaped, nil
++	default:
++		return "", fmt.Errorf("unsupported remnawave lookup mode %q", a.lookupMode)
++	}
++}
++
++func (a *RemnawaveAuthorizer) cached(userID string) (remnawaveAuthorizationCacheEntry, bool) {
++	a.mu.Lock()
++	defer a.mu.Unlock()
++	entry, ok := a.cache[userID]
++	return entry, ok
++}
++
++func (a *RemnawaveAuthorizer) store(userID string, allowed bool, checkedAt time.Time) {
++	a.mu.Lock()
++	a.cache[userID] = remnawaveAuthorizationCacheEntry{allowed: allowed, checkedAt: checkedAt}
++	a.mu.Unlock()
++}
++
++func findStringField(value any, key string) (string, bool) {
++	switch typed := value.(type) {
++	case map[string]any:
++		for candidateKey, candidateValue := range typed {
++			if strings.EqualFold(candidateKey, key) {
++				if text, ok := candidateValue.(string); ok {
++					return text, true
++				}
++			}
++		}
++		for _, candidateValue := range typed {
++			if text, ok := findStringField(candidateValue, key); ok {
++				return text, true
++			}
++		}
++	case []any:
++		for _, candidateValue := range typed {
++			if text, ok := findStringField(candidateValue, key); ok {
++				return text, true
++			}
++		}
++	}
++	return "", false
++}
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/relay/controlplane/remnawave_authorizer_test.go /mnt/data/zorin-fabric-v0.1/vconnect-fabric/relay/controlplane/remnawave_authorizer_test.go
+--- vconnect-main/relay/controlplane/remnawave_authorizer_test.go	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/relay/controlplane/remnawave_authorizer_test.go	2026-08-15 17:46:49.669208215 +0000
+@@ -0,0 +1,91 @@
++package controlplane
++
++import (
++	"context"
++	"encoding/base64"
++	"net/http"
++	"net/http/httptest"
++	"testing"
++	"time"
++)
++
++func TestDeriveFabricCredentialStable(t *testing.T) {
++	key := []byte("0123456789abcdef0123456789abcdef")
++	first := DeriveFabricCredential(key, "abc")
++	second := DeriveFabricCredential(key, "abc")
++	if first == "" || first != second {
++		t.Fatalf("credential must be stable")
++	}
++	if first == DeriveFabricCredential(key, "other") {
++		t.Fatalf("credentials for different users must differ")
++	}
++}
++
++func TestRemnawaveAuthorizerActiveUser(t *testing.T) {
++	key := []byte("0123456789abcdef0123456789abcdef")
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if got := r.Header.Get("Authorization"); got != "Bearer api-token" {
++			t.Fatalf("unexpected authorization header: %q", got)
++		}
++		if r.URL.Path != "/api/users/by-short-uuid/u123" {
++			t.Fatalf("unexpected path: %s", r.URL.Path)
++		}
++		w.Header().Set("Content-Type", "application/json")
++		_, _ = w.Write([]byte(`{"response":{"status":"ACTIVE"}}`))
++	}))
++	defer server.Close()
++
++	authorizer, err := NewRemnawaveAuthorizer(RemnawaveAuthorizerConfig{
++		BaseURL:       server.URL,
++		APIToken:      "api-token",
++		LookupMode:    RemnawaveLookupShortUUID,
++		CredentialKey: key,
++		CacheTTL:      time.Second,
++		StaleGrace:    time.Second,
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++
++	credential := DeriveFabricCredential(key, "u123")
++	userID, err := authorizer.AuthorizeUser(context.Background(), "u123", credential)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if userID != "u123" {
++		t.Fatalf("unexpected user id %q", userID)
++	}
++}
++
++func TestRemnawaveAuthorizerRejectsDisabledUser(t *testing.T) {
++	key := []byte("0123456789abcdef0123456789abcdef")
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		w.Header().Set("Content-Type", "application/json")
++		_, _ = w.Write([]byte(`{"response":{"status":"DISABLED"}}`))
++	}))
++	defer server.Close()
++
++	authorizer, err := NewRemnawaveAuthorizer(RemnawaveAuthorizerConfig{
++		BaseURL:       server.URL,
++		APIToken:      "api-token",
++		CredentialKey: key,
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	credential := DeriveFabricCredential(key, "u123")
++	if _, err := authorizer.AuthorizeUser(context.Background(), "u123", credential); err == nil {
++		t.Fatal("disabled user must be rejected")
++	}
++}
++
++func TestFabricCredentialKeyFromBase64(t *testing.T) {
++	key := []byte("0123456789abcdef0123456789abcdef")
++	decoded, err := FabricCredentialKeyFromBase64(base64.StdEncoding.EncodeToString(key))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if string(decoded) != string(key) {
++		t.Fatal("decoded key mismatch")
++	}
++}
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/relay/controlplane/service_handler.go /mnt/data/zorin-fabric-v0.1/vconnect-fabric/relay/controlplane/service_handler.go
+--- vconnect-main/relay/controlplane/service_handler.go	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/relay/controlplane/service_handler.go	2026-08-15 17:44:56.825821381 +0000
+@@ -16,6 +16,7 @@
+ type ServiceHandler struct {
+ 	UserID         string
+ 	AllowedUserIDs map[string]struct{}
++	Authorizer     UserAuthorizer
+ 	CookieVault    *CookieVault
+ 	Sessions       SessionController
+ }
+@@ -24,12 +25,12 @@
+ 	if bridge == nil {
+ 		return errors.New("controlplane: relay bridge is required")
+ 	}
+-	if h.UserID == "" && len(h.AllowedUserIDs) == 0 {
+-		return errors.New("controlplane: at least one user id is required")
++	if h.Authorizer == nil && h.UserID == "" && len(h.AllowedUserIDs) == 0 {
++		return errors.New("controlplane: user authorization is not configured")
+ 	}
+ 	if h.CookieVault != nil {
+ 		bridge.SetOnCookieSubmit(func(submit tunnel.CookieSubmit) (tunnel.CookieAck, error) {
+-			userID, err := h.authorizeUser(submit.UserID)
++			userID, err := h.authorizeUser(ctx, submit.UserID, submit.Credential)
+ 			if err != nil {
+ 				return tunnel.CookieAck{}, err
+ 			}
+@@ -38,7 +39,7 @@
+ 	}
+ 	if h.Sessions != nil {
+ 		bridge.SetOnSessionCreate(func(request tunnel.SessionCreateRequest) (tunnel.SessionReady, error) {
+-			userID, err := h.authorizeUser(request.UserID)
++			userID, err := h.authorizeUser(ctx, request.UserID, request.Credential)
+ 			if err != nil {
+ 				return tunnel.SessionReady{}, err
+ 			}
+@@ -46,7 +47,7 @@
+ 		})
+ 	}
+ 	bridge.SetOnEgressListRequest(func(request tunnel.EgressListRequest) ([]tunnel.EgressDescriptor, error) {
+-		if _, err := h.authorizeUser(request.UserID); err != nil {
++		if _, err := h.authorizeUser(ctx, request.UserID, request.Credential); err != nil {
+ 			return nil, err
+ 		}
+ 		return nil, nil
+@@ -54,8 +55,11 @@
+ 	return nil
+ }
+ 
+-func (h ServiceHandler) authorizeUser(requested string) (string, error) {
++func (h ServiceHandler) authorizeUser(ctx context.Context, requested, credential string) (string, error) {
+ 	requested = strings.TrimSpace(requested)
++	if h.Authorizer != nil {
++		return h.Authorizer.AuthorizeUser(ctx, requested, credential)
++	}
+ 	if len(h.AllowedUserIDs) > 0 {
+ 		if _, ok := h.AllowedUserIDs[requested]; !ok {
+ 			return "", fmt.Errorf("controlplane: user is not authorized")
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/relay/controlplane/user_authorizer.go /mnt/data/zorin-fabric-v0.1/vconnect-fabric/relay/controlplane/user_authorizer.go
+--- vconnect-main/relay/controlplane/user_authorizer.go	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/relay/controlplane/user_authorizer.go	2026-08-15 17:44:56.824556361 +0000
+@@ -0,0 +1,26 @@
++package controlplane
++
++import (
++	"context"
++	"errors"
++	"strings"
++)
++
++// UserAuthorizer проверяет, имеет ли пользователь право выполнять управляющую операцию.
++// Транспорт звонка остаётся отдельным слоем и не считается доказательством личности.
++type UserAuthorizer interface {
++	AuthorizeUser(ctx context.Context, userID, credential string) (string, error)
++}
++
++type UserAuthorizerFunc func(ctx context.Context, userID, credential string) (string, error)
++
++func (fn UserAuthorizerFunc) AuthorizeUser(ctx context.Context, userID, credential string) (string, error) {
++	if fn == nil {
++		return "", errors.New("controlplane: user authorizer is not configured")
++	}
++	return fn(ctx, userID, credential)
++}
++
++func normalizeUserID(value string) string {
++	return strings.TrimSpace(value)
++}
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/relay/main.go /mnt/data/zorin-fabric-v0.1/vconnect-fabric/relay/main.go
+--- vconnect-main/relay/main.go	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/relay/main.go	2026-08-15 17:44:18.271782952 +0000
+@@ -38,6 +38,7 @@
+ 	egressConfig := flag.String("egress-config", "", "creator mode: JSON egress profile config")
+ 	serviceControl := flag.Bool("service-control", false, "use this call as a control channel and request a work call")
+ 	serviceUserID := flag.String("service-user-id", "", "user id sent in service control messages")
++	serviceCredential := flag.String("service-credential", "", "credential for authenticated service control")
+ 	serviceCookieFile := flag.String("service-cookie-file", "", "optional cookies JSON file sent through the service call")
+ 	serviceCookiePlatform := flag.String("service-cookie-platform", "telemost", "platform for service cookie submit")
+ 	serviceWorkPlatform := flag.String("service-work-platform", "telemost", "platform requested for the work call")
+@@ -54,6 +55,7 @@
+ 	serviceCfg := serviceControlConfig{
+ 		Enabled:        *serviceControl,
+ 		UserID:         *serviceUserID,
++		Credential:     *serviceCredential,
+ 		RequestID:      *serviceRequestID,
+ 		EgressID:       *egressID,
+ 		CookieFile:     *serviceCookieFile,
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/relay/service_control.go /mnt/data/zorin-fabric-v0.1/vconnect-fabric/relay/service_control.go
+--- vconnect-main/relay/service_control.go	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/relay/service_control.go	2026-08-15 17:44:18.399298137 +0000
+@@ -28,6 +28,7 @@
+ type serviceControlConfig struct {
+ 	Enabled        bool
+ 	UserID         string
++	Credential     string
+ 	RequestID      string
+ 	EgressID       string
+ 	CookieFile     string
+@@ -143,6 +144,7 @@
+ 		return nil
+ 	}
+ 	cfg.UserID = strings.TrimSpace(cfg.UserID)
++	cfg.Credential = strings.TrimSpace(cfg.Credential)
+ 	cfg.RequestID = strings.TrimSpace(cfg.RequestID)
+ 	cfg.CookieFile = strings.TrimSpace(cfg.CookieFile)
+ 	cfg.CookiePlatform = strings.TrimSpace(cfg.CookiePlatform)
+@@ -164,7 +166,7 @@
+ }
+ 
+ func configureServiceBridge(bridge *tunnel.RelayBridge, cfg serviceControlConfig, rt *serviceControlRuntime, emit func(string)) {
+-	bridge.SetEgressDiscoveryUserID(cfg.UserID)
++	bridge.SetEgressDiscoveryIdentity(cfg.UserID, cfg.Credential)
+ 	bridge.SetOnCookieAck(func(ack tunnel.CookieAck) {
+ 		log.Printf("[service] cookie stored platform=%q request=%q", ack.Platform, ack.RequestID)
+ 		rt.markCookieAcked()
+@@ -203,32 +205,35 @@
+ 			log.Printf("[service] read cookies: %v", err)
+ 		} else {
+ 			bridge.SubmitCookies(tunnel.CookieSubmit{
+-				RequestID: cfg.RequestID + "-cookies",
+-				UserID:    cfg.UserID,
+-				Platform:  cfg.CookiePlatform,
+-				Format:    "json",
+-				Payload:   string(payload),
++				RequestID:  cfg.RequestID + "-cookies",
++				UserID:     cfg.UserID,
++				Credential: cfg.Credential,
++				Platform:   cfg.CookiePlatform,
++				Format:     "json",
++				Payload:    string(payload),
+ 			})
+ 			log.Printf("[service] submitted cookies platform=%q request=%q", cfg.CookiePlatform, cfg.RequestID+"-cookies")
+ 		}
+ 	}
+ 	bridge.RequestSession(tunnel.SessionCreateRequest{
+-		RequestID: cfg.RequestID,
+-		UserID:    cfg.UserID,
+-		EgressID:  cfg.EgressID,
+-		Platform:  cfg.WorkPlatform,
+-		Mode:      cfg.TunnelMode,
++		RequestID:  cfg.RequestID,
++		UserID:     cfg.UserID,
++		Credential: cfg.Credential,
++		EgressID:   cfg.EgressID,
++		Platform:   cfg.WorkPlatform,
++		Mode:       cfg.TunnelMode,
+ 	})
+ 	log.Printf("[service] requested work session platform=%q egress=%q request=%q", cfg.WorkPlatform, cfg.EgressID, cfg.RequestID)
+ }
+ 
+ func requestServiceSessionWithoutCookies(bridge *tunnel.RelayBridge, cfg serviceControlConfig) {
+ 	bridge.RequestSession(tunnel.SessionCreateRequest{
+-		RequestID: cfg.RequestID,
+-		UserID:    cfg.UserID,
+-		EgressID:  cfg.EgressID,
+-		Platform:  cfg.WorkPlatform,
+-		Mode:      cfg.TunnelMode,
++		RequestID:  cfg.RequestID,
++		UserID:     cfg.UserID,
++		Credential: cfg.Credential,
++		EgressID:   cfg.EgressID,
++		Platform:   cfg.WorkPlatform,
++		Mode:       cfg.TunnelMode,
+ 	})
+ 	log.Printf("[service] retried work session request platform=%q egress=%q request=%q", cfg.WorkPlatform, cfg.EgressID, cfg.RequestID)
+ }
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/relay/tunnel/protocol.go /mnt/data/zorin-fabric-v0.1/vconnect-fabric/relay/tunnel/protocol.go
+--- vconnect-main/relay/tunnel/protocol.go	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/relay/tunnel/protocol.go	2026-08-15 17:44:18.399298137 +0000
+@@ -63,7 +63,8 @@
+ }
+ 
+ type EgressListRequest struct {
+-	UserID string `json:"userId,omitempty"`
++	UserID     string `json:"userId,omitempty"`
++	Credential string `json:"credential,omitempty"`
+ }
+ 
+ type EgressList struct {
+@@ -82,11 +83,12 @@
+ }
+ 
+ type SessionCreateRequest struct {
+-	RequestID string `json:"requestId"`
+-	UserID    string `json:"userId,omitempty"`
+-	EgressID  string `json:"egressId"`
+-	Platform  string `json:"platform,omitempty"`
+-	Mode      string `json:"mode,omitempty"`
++	RequestID  string `json:"requestId"`
++	UserID     string `json:"userId,omitempty"`
++	Credential string `json:"credential,omitempty"`
++	EgressID   string `json:"egressId"`
++	Platform   string `json:"platform,omitempty"`
++	Mode       string `json:"mode,omitempty"`
+ }
+ 
+ type SessionReady struct {
+@@ -98,11 +100,12 @@
+ }
+ 
+ type CookieSubmit struct {
+-	RequestID string `json:"requestId"`
+-	UserID    string `json:"userId,omitempty"`
+-	Platform  string `json:"platform"`
+-	Format    string `json:"format"`
+-	Payload   string `json:"payload"`
++	RequestID  string `json:"requestId"`
++	UserID     string `json:"userId,omitempty"`
++	Credential string `json:"credential,omitempty"`
++	Platform   string `json:"platform"`
++	Format     string `json:"format"`
++	Payload    string `json:"payload"`
+ }
+ 
+ type CookieAck struct {
+@@ -181,7 +184,11 @@
+ }
+ 
+ func EncodeEgressListRequestPayload(userID string) []byte {
+-	return encodeControlJSON(EgressListRequest{UserID: userID})
++	return EncodeEgressListRequestPayloadWithCredential(userID, "")
++}
++
++func EncodeEgressListRequestPayloadWithCredential(userID, credential string) []byte {
++	return encodeControlJSON(EgressListRequest{UserID: userID, Credential: credential})
+ }
+ 
+ func DecodeEgressListRequest(payload []byte) (EgressListRequest, bool) {
+diff -ruN '--exclude=.git' '--exclude=node_modules' vconnect-main/relay/tunnel/relay_bridge.go /mnt/data/zorin-fabric-v0.1/vconnect-fabric/relay/tunnel/relay_bridge.go
+--- vconnect-main/relay/tunnel/relay_bridge.go	2026-07-06 11:50:03.000000000 +0000
++++ /mnt/data/zorin-fabric-v0.1/vconnect-fabric/relay/tunnel/relay_bridge.go	2026-08-15 17:44:18.271530818 +0000
+@@ -101,7 +101,8 @@
+ 	onControlErrorMu sync.Mutex
+ 	onControlError   func(ControlError)
+ 
+-	egressDiscoveryUserID string
++	egressDiscoveryUserID     string
++	egressDiscoveryCredential string
+ }
+ 
+ func (rb *RelayBridge) SetOnPeerConfig(fn func(fps, batch, trackCount int)) {
+@@ -134,12 +135,17 @@
+ 	rb.onEgressListRequestMu.Unlock()
+ }
+ 
+-func (rb *RelayBridge) SetEgressDiscoveryUserID(userID string) {
++func (rb *RelayBridge) SetEgressDiscoveryIdentity(userID, credential string) {
+ 	rb.egressMu.Lock()
+ 	rb.egressDiscoveryUserID = strings.TrimSpace(userID)
++	rb.egressDiscoveryCredential = strings.TrimSpace(credential)
+ 	rb.egressMu.Unlock()
+ }
+ 
++func (rb *RelayBridge) SetEgressDiscoveryUserID(userID string) {
++	rb.SetEgressDiscoveryIdentity(userID, "")
++}
++
+ func (rb *RelayBridge) RequestSession(request SessionCreateRequest) {
+ 	rb.logFn("relay: sending SessionCreate request=%q platform=%q egress=%q", request.RequestID, request.Platform, request.EgressID)
+ 	rb.send(ControlConnID, MsgSessionCreate, EncodeSessionCreatePayload(request))
+@@ -359,7 +365,8 @@
+ }
+ 
+ func (rb *RelayBridge) sendEgressListRequest() {
+-	rb.send(ControlConnID, MsgEgressListRequest, EncodeEgressListRequestPayload(rb.egressDiscoveryUser()))
++	userID, credential := rb.egressDiscoveryIdentity()
++	rb.send(ControlConnID, MsgEgressListRequest, EncodeEgressListRequestPayloadWithCredential(userID, credential))
+ }
+ 
+ func (rb *RelayBridge) startEgressListRetry() {
+@@ -392,10 +399,10 @@
+ 	return rb.requestedEgressID
+ }
+ 
+-func (rb *RelayBridge) egressDiscoveryUser() string {
++func (rb *RelayBridge) egressDiscoveryIdentity() (string, string) {
+ 	rb.egressMu.RLock()
+ 	defer rb.egressMu.RUnlock()
+-	return rb.egressDiscoveryUserID
++	return rb.egressDiscoveryUserID, rb.egressDiscoveryCredential
+ }
+ 
+ func (rb *RelayBridge) currentEgressRegistry() *egress.Registry {

@@ -1,0 +1,33 @@
+services:
+  bot:
+    image: ghcr.io/localzet/vconnect-bot:latest
+    container_name: vconnect-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    # To run the call-carried creator service instead of the VK bot, set in .env:
+    # SERVICE_MODE=creator-service
+    # USER_IDS=<client-id-1>,<client-id-2>
+    # MAX_ACTIVE_USERS=2
+    # VAULT_KEY_BASE64=<base64-encoded-32-byte-key>
+    # EGRESS_CONFIG=/config/egresses.json
+    # WORK_PLATFORM=telemost
+    # Uncomment to reach a SOCKS5 VPN client running on the host via
+    # UPSTREAM_SOCKS=host.docker.internal:<port>. On Linux this maps to the host.
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+    volumes:
+      # Cookies for spawned creators. Create empty `[]` files for platforms you
+      # don't use, or remove the corresponding line.
+      - ./cookies-vk.json:/data/cookies-vk.json:ro
+      - ./cookies-yandex.json:/data/cookies-yandex.json:ro
+      - ./cookies-wbstream.json:/data/cookies-wbstream.json:ro
+      - ./cookies-dion.json:/data/cookies-dion.json:ro
+      # Optional multiconnect egress profile config.
+      # Set EGRESS_CONFIG=/config/egresses.json in .env to enable it.
+      - ../../docs/egresses.example.json:/config/egresses.json:ro
+      # Per-session creator logs persist here.
+      - bot-sessions:/data/sessions
+
+volumes:
+  bot-sessions:

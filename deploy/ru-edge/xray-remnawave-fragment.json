@@ -1,0 +1,37 @@
+{
+  "inbounds": [
+    {
+      "tag": "VCONNECT_FABRIC_IN",
+      "listen": "127.0.0.1",
+      "port": 10808,
+      "protocol": "socks",
+      "settings": {
+        "auth": "noauth",
+        "udp": true
+      }
+    }
+  ],
+  "routing": {
+    "rules": [
+      {
+        "inboundTag": ["VCONNECT_FABRIC_IN"],
+        "balancerTag": "FABRIC_RU_EU"
+      }
+    ],
+    "balancers": [
+      {
+        "tag": "FABRIC_RU_EU",
+        "selector": ["FABRIC_EU_"],
+        "strategy": {
+          "type": "leastPing"
+        }
+      }
+    ]
+  },
+  "observatory": {
+    "subjectSelector": ["FABRIC_EU_"],
+    "probeUrl": "https://www.google.com/generate_204",
+    "probeInterval": "10s",
+    "enableConcurrency": true
+  }
+}

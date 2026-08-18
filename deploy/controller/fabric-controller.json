@@ -1,0 +1,34 @@
+{
+  "listen": "0.0.0.0:47800",
+  "fabricAuthKeyFile": "/run/secrets/fabric_auth_key",
+  "remnawave": {
+    "baseUrl": "https://panel.example.com",
+    "apiTokenFile": "/run/secrets/remnawave_api_token",
+    "lookupMode": "short-uuid"
+  },
+  "trust": {
+    "enabled": false,
+    "registryFile": "/etc/zorin-fabric/trust-registry.json",
+    "tokenTtl": "1h"
+  },
+  "edges": [
+    {
+      "id": "ru-1",
+      "name": "RU Access 1",
+      "region": "RU",
+      "enabled": true,
+      "priority": 100,
+      "heartbeatTokenFile": "/run/secrets/edge_ru_1",
+      "staleAfter": "60s"
+    },
+    {
+      "id": "ru-2",
+      "name": "RU Access 2",
+      "region": "RU",
+      "enabled": true,
+      "priority": 90,
+      "heartbeatTokenFile": "/run/secrets/edge_ru_2",
+      "staleAfter": "60s"
+    }
+  ]
+}

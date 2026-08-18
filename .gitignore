@@ -1,0 +1,18 @@
+*.log
+*.tmp
+*.pid
+.DS_Store
+.idea/
+.vscode/
+secrets/
+**/secrets/
+.env
+**/.env
+!**/.env.example
+fabric-auth-key.txt
+remnawave-api-token.txt
+# Provider credentials / local generated deployment state
+cookies.zip
+cookies-*.json
+deploy/ru-edge/generated/*.json
+!deploy/ru-edge/generated/.gitkeep

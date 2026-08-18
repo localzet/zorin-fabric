@@ -1,0 +1,33 @@
+services:
+  fabric-controller:
+    build:
+      context: ../../fabric-controller
+    image: zorin-fabric/controller:1.0.1
+    container_name: zorin-fabric-controller
+    restart: unless-stopped
+    ports:
+      # Публикуйте Controller наружу только через HTTPS reverse proxy.
+      - "127.0.0.1:47800:47800"
+    volumes:
+      - ./fabric-controller.json:/etc/zorin-fabric/fabric-controller.json:ro
+      - ./trust-registry.json:/etc/zorin-fabric/trust-registry.json:ro
+    secrets:
+      - fabric_auth_key
+      - remnawave_api_token
+      - edge_ru_1
+      - edge_ru_2
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/fabric-health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+secrets:
+  fabric_auth_key:
+    file: ./secrets/fabric-auth-key.txt
+  remnawave_api_token:
+    file: ./secrets/remnawave-api-token.txt
+  edge_ru_1:
+    file: ./secrets/edge-ru-1.txt
+  edge_ru_2:
+    file: ./secrets/edge-ru-2.txt
